@@ -301,7 +301,7 @@ def _payment_link(res, amount) -> str | None:
 	it without the desk copying one in. None where the property has no
 	payment gateway (the guest is asked to pay at the desk instead)."""
 	folio = frappe.db.get_value("Folio", {"reservation": res.name, "folio_type": "Guest",
-	                                      "status": "Open"}, "name")
+	                                     "status": "Open"}, "name")
 	if not folio:
 		return None
 	# a test-mode gateway makes a fake link a guest cannot pay
@@ -557,6 +557,3 @@ def reply(property: str, number: str, text: str):
 			+ ". Outside the 24-hour window only template messages "
 			  "deliver - the guest writing to you reopens it.")
 	return out
-
-
-
