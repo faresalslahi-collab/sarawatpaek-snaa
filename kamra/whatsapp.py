@@ -187,8 +187,8 @@ def notify_booking_confirmed(reservation: str) -> dict:
 	if out.get("sent") and tpl_pre and res.get("precheckin_token"):
 		link = f"{frappe.utils.get_url()}/kamra/checkin/{res.precheckin_token}"
 		send_template(res.property, phone, tpl_pre,
-		              [res.guest_name or "Guest", link],
-		              guest=res.guest, reservation=res.name)
+		             [res.guest_name or "Guest", prop_name or res.property, link],
+		             guest=res.guest, reservation=res.name)
 	return out
 
 
@@ -301,7 +301,7 @@ def _payment_link(res, amount) -> str | None:
 	it without the desk copying one in. None where the property has no
 	payment gateway (the guest is asked to pay at the desk instead)."""
 	folio = frappe.db.get_value("Folio", {"reservation": res.name, "folio_type": "Guest",
-	                                      "status": "Open"}, "name")
+	                                     "status": "Open"}, "name")
 	if not folio:
 		return None
 	# a test-mode gateway makes a fake link a guest cannot pay
@@ -323,7 +323,7 @@ def _payment_link(res, amount) -> str | None:
 
 
 @frappe.whitelist(methods=["POST"])
-@require_roles("Front Desk", "Hotel Admin", "Kamra Agent", scope={"guest": "Guest"})
+@require_roles("Front Desk", "Hotel Admin", "Kamra Agent")
 def send_marketing(property: str, guest: str, template: str, args=None) -> dict:
 	"""A promotional template to one guest, refused without their consent."""
 	if isinstance(args, str):
@@ -557,6 +557,3 @@ def reply(property: str, number: str, text: str):
 			+ ". Outside the 24-hour window only template messages "
 			  "deliver - the guest writing to you reopens it.")
 	return out
-
-
-
