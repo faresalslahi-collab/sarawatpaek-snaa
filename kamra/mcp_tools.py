@@ -2647,6 +2647,13 @@ TOOLS: tuple[ToolSpec, ...] = (
 	),
 )
 
+TOOLS += (
+    _t("erp_accounts", "sarawat_erp_mcp.accounts", "Read-only ERPNext company accounts.", {"offset": _p("integer"), "limit": _p("integer")}, property=True, group="Billing"),
+    _t("erp_account_mappings", "sarawat_erp_mcp.mappings", "Read-only approved and proposed account mappings.", {"offset": _p("integer"), "limit": _p("integer")}, property=True, group="Billing"),
+    _t("erp_cost_centers", "sarawat_erp_mcp.cost_centers", "Read-only company cost centers.", {}, property=True, group="Billing"),
+    _t("erp_journal_preview", "sarawat_erp_mcp.journal_preview", "Preview a ledger entry without saving a journal.", {"entry_id": _p("string")}, required=("entry_id",), property=True, group="Billing"),
+)
+
 BY_NAME: dict[str, ToolSpec] = {t.name: t for t in TOOLS}
 TOOL_COUNT = len(TOOLS)
 INSTRUCTIONS = (
@@ -2752,6 +2759,10 @@ def tool_allowed(spec: ToolSpec, roles: set[str] | None = None) -> bool:
 	check on the endpoint's (doctype, permission type) - so Role Permission
 	Manager edits change the tool list too; for an explicit role set (tests,
 	previews), whether any of those roles holds that permission."""
+	if spec.dotted.startswith("sarawat_erp_mcp.") and roles is None:
+		import frappe
+		if frappe.conf.get("sarawat_erp_mcp_enabled") != 1 or frappe.session.user != "agent@kamra.local":
+			return False
 	fn = resolve_endpoint(spec.dotted)
 	perm = getattr(fn, "_kamra_perm", None)
 	if roles is None and perm:
