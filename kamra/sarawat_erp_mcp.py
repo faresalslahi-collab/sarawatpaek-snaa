@@ -32,5 +32,12 @@ def journal_preview(property, entry_id):
     from kamra_erpnext_integration.preview_api import preview
     return preview(entry_id=entry_id)
 
-for fn in (accounts, mappings, cost_centers, journal_preview):
+def journal_draft(property, entry_id):
+    _gate(property)
+    if frappe.conf.get("sarawat_erp_mcp_draft_enabled") != 1:
+        frappe.throw("ERP draft bridge disabled", frappe.PermissionError)
+    from kamra_erpnext_integration.draft_api import create_draft
+    return create_draft(entry_id=entry_id)
+
+for fn in (accounts, mappings, cost_centers, journal_preview, journal_draft):
     fn._kamra_roles = ("System Manager",)
