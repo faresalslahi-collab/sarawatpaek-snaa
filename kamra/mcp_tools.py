@@ -2651,6 +2651,7 @@ TOOLS += (
     _t("erp_accounts", "sarawat_erp_mcp.accounts", "Read-only ERPNext company accounts.", {"offset": _p("integer"), "limit": _p("integer")}, property=True, group="Billing"),
     _t("erp_account_mappings", "sarawat_erp_mcp.mappings", "Read-only approved and proposed account mappings.", {"offset": _p("integer"), "limit": _p("integer")}, property=True, group="Billing"),
     _t("erp_cost_centers", "sarawat_erp_mcp.cost_centers", "Read-only company cost centers.", {}, property=True, group="Billing"),
+    _t("erp_journal_draft", "sarawat_erp_mcp.journal_draft", "Save an approved folio journal as a draft only. Obtain explicit user approval before each save.", {"entry_id": _p("string")}, required=("entry_id",), property=True, mutating=True, group="Billing"),
     _t("erp_journal_preview", "sarawat_erp_mcp.journal_preview", "Preview a ledger entry without saving a journal.", {"entry_id": _p("string")}, required=("entry_id",), property=True, group="Billing"),
 )
 
@@ -2676,6 +2677,7 @@ def input_schema(spec: ToolSpec) -> dict[str, Any]:
 
 # Writes that can't simply be undone: MCP clients may ask before each one
 DESTRUCTIVE = frozenset({
+	"erp_journal_draft",
 	"cancel_booking", "cancel_itinerary", "decline_booking_request", "check_out", "early_departure",
 	"void_charge", "close_folio", "waive_security_deposit", "pos_cancel_order", "pos_remove_item",
 	"pos_move_room_bill",
@@ -2762,6 +2764,10 @@ def tool_allowed(spec: ToolSpec, roles: set[str] | None = None) -> bool:
 	if spec.dotted.startswith("sarawat_erp_mcp.") and roles is None:
 		import frappe
 		if frappe.conf.get("sarawat_erp_mcp_enabled") != 1 or frappe.session.user != "agent@kamra.local":
+			return False
+	if spec.name == "erp_journal_draft" and roles is None:
+		import frappe
+		if frappe.conf.get("sarawat_erp_mcp_draft_enabled") != 1:
 			return False
 	fn = resolve_endpoint(spec.dotted)
 	perm = getattr(fn, "_kamra_perm", None)
