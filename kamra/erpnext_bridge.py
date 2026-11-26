@@ -191,6 +191,15 @@ def _post_day(property: str, business_date: str) -> dict:
 	if not erpnext_installed():
 		frappe.throw(_("ERPNext is not installed on this site."))
 	date = _closed_date(property, business_date)
+	if "kamra_erpnext_integration" in frappe.get_installed_apps():
+		company = (_setting(property, "erpnext_company") or "").strip()
+		if not company or company != frappe.conf.get("kamra_finance_company"):
+			frappe.throw(_("Resolve ERP company scope before daily posting."))
+		frappe.db.sql("SELECT name FROM `tabCompany` WHERE name = %s FOR UPDATE", (company,))
+		if frappe.db.sql("""SELECT name FROM `tabKamra Posting Record`
+			WHERE source_property = %s AND posting_date = %s
+			FOR UPDATE""", (property, date)):
+			frappe.throw(_("Detailed integration records exist for this date; daily posting blocked."))
 	lines, missing = journal_lines(_day_rows(property, date), account_map(property))
 	if missing:
 		frappe.throw(_("Map these in Settings, Finance, ERPNext books first: {0}").format(
