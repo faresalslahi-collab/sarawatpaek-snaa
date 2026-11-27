@@ -2649,6 +2649,7 @@ TOOLS: tuple[ToolSpec, ...] = (
 
 TOOLS += (
     _t("erp_reversal_review", "sarawat_erp_mcp.reversal_review", "Review a full charge reversal against its submitted original journal; never saves.", {"entry_id": _p("string")}, required=("entry_id",), property=True, group="Billing"),
+    _t("erp_folio_reconciliation", "sarawat_erp_mcp.folio_reconciliation", "Review folio movements against integration records; not a complete duplicate audit.", {"folio": _p("string")}, required=("folio",), property=True, group="Billing"),
     _t("erp_period_movements", "sarawat_erp_mcp.period_movements", "Summarize visible non-cancelled period GL movements, not a trial balance.", {"from_date": _p("string"), "to_date": _p("string")}, required=("from_date", "to_date"), property=True, group="Billing"),
     _t("erp_general_ledger", "sarawat_erp_mcp.general_ledger", "Read permission-filtered company GL including cancellation rows; requires explicit company-wide read enablement.", {"from_date": _p("string"), "to_date": _p("string"), "offset": _p("integer"), "limit": _p("integer")}, required=("from_date", "to_date"), property=True, group="Billing"),
     _t("erp_ledger_entries", "sarawat_erp_mcp.ledger_entries", "Read scoped folio ledger source identities, not ERP general ledger.", {"folio": _p("string"), "offset": _p("integer"), "limit": _p("integer")}, required=("folio",), property=True, group="Billing"),
