@@ -150,10 +150,10 @@ async function printAdmissions(tickets: AdmissionTicket[]) {
   return Promise.all(images).then(() => { tab.focus(); tab.print() })
 }
 
-function AdmissionDesk() {
+function AdmissionDesk({ issueAllowed, halls }: { issueAllowed: boolean; halls: string[] }) {
   const [order, setOrder] = useState("")
   const [scan, setScan] = useState("")
-  const [hall, setHall] = useState("705")
+  const [hall, setHall] = useState(halls[0] ?? "")
   const [tickets, setTickets] = useState<AdmissionTicket[]>([])
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
@@ -184,7 +184,7 @@ function AdmissionDesk() {
   }
   return <section dir="rtl" className="space-y-2 rounded-xl border border-zinc-200 bg-white p-3">
     <h2 className="font-semibold">تذاكر المجالس</h2>
-    <form className="flex flex-wrap gap-2" onSubmit={issue}>
+    {issueAllowed && <form className="flex flex-wrap gap-2" onSubmit={issue}>
       <input aria-label="رقم طلب نقطة البيع" placeholder="رقم طلب نقطة البيع" className={input}
         value={order} onChange={(event) => { setOrder(event.target.value); setTickets([]) }} disabled={busy} />
       <button className={button} disabled={busy || !order.trim()}>إصدار أو إعادة طباعة</button>
@@ -192,15 +192,15 @@ function AdmissionDesk() {
         onClick={() => printAdmissions(tickets).catch((e) => setError(serverError(e)))}>
         طباعة {tickets.length} تذكرة
       </button>}
-    </form>
-    <form className="flex flex-wrap gap-2" onSubmit={redeem}>
+    </form>}
+    {halls.length > 0 && <form className="flex flex-wrap gap-2" onSubmit={redeem}>
       <select aria-label="المجلس عند الدخول" className={input} value={hall} onChange={(event) => setHall(event.target.value)}>
-        <option>705</option><option>808 VIP</option>
+        {halls.map((value) => <option key={value}>{value}</option>)}
       </select>
       <input dir="ltr" aria-label="رمز التذكرة" placeholder="Scan QR" className={input}
         value={scan} onChange={(event) => setScan(event.target.value)} maxLength={162} disabled={busy} />
       <button className={button} disabled={busy || !scan.trim()}>تحقق من الدخول</button>
-    </form>
+    </form>}
     {message && <p role="status" className="text-sm text-green-700">{message}</p>}
     {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
   </section>
@@ -273,9 +273,12 @@ export default function PosDashboard() {
   const [toDate, setToDate] = useState("") // "" = the one day
   const [data, setData] = useState<Dash | null>(null)
   const [canReviewPosting, setCanReviewPosting] = useState(false)
+  const [admissionAccess, setAdmissionAccess] = useState<{ issue: boolean; halls: string[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    call<{ issue: boolean; halls: string[] }>("kamra_erpnext_integration.admission.capabilities")
+      .then(setAdmissionAccess).catch(() => setAdmissionAccess(null))
     whoami().then(({ roles }) => setCanReviewPosting(roles.includes("System Manager")))
       .catch(() => setCanReviewPosting(false))
   }, [])
@@ -328,7 +331,8 @@ export default function PosDashboard() {
 
       {error && <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{translate(error)}</div>}
 
-      {canReviewPosting && <AdmissionDesk />}
+      {admissionAccess && (admissionAccess.issue || admissionAccess.halls.length > 0) &&
+        <AdmissionDesk issueAllowed={admissionAccess.issue} halls={admissionAccess.halls} />}
       {canReviewPosting && outlet && !toDate && <PostingReview key={JSON.stringify([outlet, date])} outlet={outlet} date={date} />}
 
       {data && (
