@@ -315,7 +315,7 @@ class BillSettlementTestCase(AuditTestCase):
 		for _ in range(2):
 			self.assertTrue(pos.deliver_order(order)["posted_to_folio"])
 		self.assertEqual(frappe.db.count("Folio Charge", {
-			"parent": guest_folio(res.name), "description": ["like", f"%({order})%"]
+			"parent": guest_folio(res.name), "source_pos_order": order
 		}), 1)
 		self.assertFalse(frappe.db.exists(
 			"Cashier Transaction", {"pos_order": order, "kind": "Payment"}))
