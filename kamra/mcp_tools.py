@@ -2648,6 +2648,7 @@ TOOLS: tuple[ToolSpec, ...] = (
 )
 
 TOOLS += (
+    _t("erp_ledger_entries", "sarawat_erp_mcp.ledger_entries", "Read scoped folio ledger source identities, not ERP general ledger.", {"folio": _p("string"), "offset": _p("integer"), "limit": _p("integer")}, required=("folio",), property=True, group="Billing"),
     _t("erp_accounts", "sarawat_erp_mcp.accounts", "Read-only ERPNext company accounts.", {"offset": _p("integer"), "limit": _p("integer")}, property=True, group="Billing"),
     _t("erp_account_mappings", "sarawat_erp_mcp.mappings", "Read-only approved and proposed account mappings.", {"offset": _p("integer"), "limit": _p("integer")}, property=True, group="Billing"),
     _t("erp_cost_centers", "sarawat_erp_mcp.cost_centers", "Read-only company cost centers.", {}, property=True, group="Billing"),
