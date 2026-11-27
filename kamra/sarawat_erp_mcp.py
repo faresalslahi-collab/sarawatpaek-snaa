@@ -246,8 +246,8 @@ def balance_review(property, from_date, to_date, opening_from):
         raise ValueError("Invalid review interval; maximum 367 days")
     totals = {}
     cursor = opening
-    while cursor <= end:
-        boundary = min(end, cursor + timedelta(days=31))
+    while True:
+        boundary = cursor + timedelta(days=min(31, (end - cursor).days))
         if cursor < start:
             boundary = min(boundary, start-timedelta(days=1))
         report = period_movements(property, cursor.isoformat(), boundary.isoformat())
@@ -258,6 +258,8 @@ def balance_review(property, from_date, to_date, opening_from):
             else:
                 values[1] += Decimal(row["debit"])
                 values[2] += Decimal(row["credit"])
+        if boundary == end:
+            break
         cursor = boundary + timedelta(days=1)
     return {"opening_from": opening_from, "from_date": from_date, "to_date": to_date,
             "accounts": [{"account": account, "opening_net_debit": str(v[0]),
