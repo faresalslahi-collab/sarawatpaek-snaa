@@ -195,12 +195,13 @@ class RoomChargesBlocked(frappe.ValidationError):
 	"""The desk blocked charges to this room at check-in."""
 
 
-def assert_room_charges_allowed(reservation: str) -> None:
+def assert_room_charges_allowed(reservation: str, *, for_update: bool = False) -> None:
 	"""The check-in's room-charges decision, enforced wherever an outlet,
 	laundry or the minibar would post to the room (internal POS, the
 	external POS interface, laundry, housekeeping consumables)."""
 	allowed, room = frappe.db.get_value(
-		"Reservation", reservation, ["room_charges_allowed", "room"]) or (1, None)
+		"Reservation", reservation, ["room_charges_allowed", "room"],
+		for_update=for_update) or (1, None)
 	if allowed is None or cint(allowed):
 		return
 	number = (frappe.db.get_value("Room", room, "room_number") if room else None) or room or ""
@@ -243,7 +244,7 @@ def charge_to_room(order: str, room: str):
 	"""Point a running bill (a dine-in table, say) at an in-house guest's
 	room, so Deliver posts it to their folio through the same controller
 	path as room service - billing rules and the alcohol rule included."""
-	doc = frappe.get_doc("POS Order", order)
+	doc = frappe.get_doc("POS Order", order, for_update=True)
 	if doc.status in ("Delivered", "Cancelled"):
 		frappe.throw(_("This order is already closed."))
 	if doc.paid:
@@ -1261,7 +1262,12 @@ def acknowledge_void(order: str, item_row: str):
 def deliver_order(order: str):
 	"""Order served - moves to Delivered, which posts it to the room folio
 	(controller) when there's a linked stay."""
-	doc = frappe.get_doc("POS Order", order)
+	doc = frappe.get_doc("POS Order", order, for_update=True)
+	if doc.status == "Cancelled":
+		frappe.throw(_("This order was cancelled."))
+	if doc.status == "Delivered":
+		return {"ok": True, "status": "Delivered",
+		        "posted_to_folio": bool(doc.posted_to_folio)}
 	doc.status = "Delivered"
 	doc.save(ignore_permissions=True)
 	_flag_cleaning_if_freed(doc)
@@ -1285,7 +1291,7 @@ def pay_order(order: str, mode: str, pin: str | None = None,
 	closes the order without touching any folio. For a Card payment,
 	card_network / card_last4 record the network from the slip. Posts into the open
 	cashier session so FO + POS cash reconcile together."""
-	doc = frappe.get_doc("POS Order", order)
+	doc = frappe.get_doc("POS Order", order, for_update=True)
 	_assert_outlet_mode(doc.property, mode)
 	if doc.status == "Cancelled":
 		frappe.throw(_("This order was cancelled."))
