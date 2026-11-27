@@ -104,5 +104,51 @@ class ReviewTests(unittest.TestCase):
                 self.bridge.general_ledger("P", start, end)
         self.frappe.get_list.assert_not_called()
 
+    def reversal_fixture(self):
+        common = dict(property="P", folio="F1", source_doctype="Folio Charge",
+                      ledger="Guest", transaction_code="1200", check_permission=Mock())
+        original = types.SimpleNamespace(**common, name="L1", reversal_of=None, debit=1050, credit=0)
+        reversal = types.SimpleNamespace(**common, name="L2", reversal_of="L1", debit=0, credit=1050, business_date="2026-11-26")
+        self.frappe.get_doc.side_effect = [reversal, original]
+        self.bridge.posting_status = Mock(side_effect=[{"records":[{"status":"Posted","journal_entry":"JV1"}]}, {"records":[]}])
+        self.bridge.journal_get = Mock(return_value={"docstatus":1,"record":{"status":"Posted"},"journal":"JV1","total_debit":1050,"total_credit":1050,
+            "rows":[{"account":"AR","debit":1050,"credit":0,"party":"C1"},{"account":"Revenue","debit":0,"credit":1000},{"account":"VAT","debit":0,"credit":50}]})
+        return original, reversal
+
+    def test_reversal_review_full_charge(self):
+        self.reversal_fixture()
+        result = self.bridge.reversal_review("P", "L2")
+        self.assertEqual(result["original_journal"], "JV1")
+        self.assertEqual(result["status"], "Needs Review")
+        self.assertEqual([r["debit"] for r in result["rows"]], [0,1000,50])
+        self.assertEqual([r["credit"] for r in result["rows"]], [1050,0,0])
+        self.assertEqual(result["rows"][0]["party"], "C1")
+
+    def test_reversal_review_cross_property(self):
+        original, reversal = self.reversal_fixture()
+        original.property = "Other"
+        with self.assertRaises(ValueError):
+            self.bridge.reversal_review("P", "L2")
+        self.bridge.posting_status.assert_not_called()
+
+    def test_reversal_review_partial_rejected(self):
+        original, reversal = self.reversal_fixture()
+        reversal.credit = 1000
+        with self.assertRaises(ValueError):
+            self.bridge.reversal_review("P", "L2")
+        self.bridge.posting_status.assert_not_called()
+
+    def test_reversal_review_unsubmitted_rejected(self):
+        self.reversal_fixture()
+        self.bridge.journal_get.return_value["docstatus"] = 0
+        with self.assertRaises(ValueError):
+            self.bridge.reversal_review("P", "L2")
+
+    def test_reversal_review_gate(self):
+        self.bridge._gate.side_effect = PermissionError
+        with self.assertRaises(PermissionError):
+            self.bridge.reversal_review("P", "L2")
+        self.frappe.get_doc.assert_not_called()
+
 if __name__ == "__main__":
     unittest.main()
