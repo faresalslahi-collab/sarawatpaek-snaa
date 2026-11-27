@@ -141,5 +141,46 @@ def general_ledger(property, from_date, to_date, offset=0, limit=100):
             "next_offset": offset + limit if len(rows) > limit else None,
             "scope": "Permission-filtered company GL, including cancellation rows; not proof of source identity"}
 
-for fn in (general_ledger, ledger_entries, accounts, mappings, cost_centers, journal_preview, journal_draft, journal_get, posting_status, customers):
+def reversal_review(property, entry_id):
+    _gate(property)
+    from decimal import Decimal
+    if not isinstance(entry_id, str) or not entry_id.strip() or len(entry_id) > 140:
+        raise ValueError("Invalid reversal identity")
+    reversal = frappe.get_doc("Folio Ledger Entry", entry_id)
+    reversal.check_permission("read")
+    if reversal.property != property or not reversal.reversal_of:
+        raise ValueError("Scoped reversal required")
+    original = frappe.get_doc("Folio Ledger Entry", reversal.reversal_of)
+    original.check_permission("read")
+    if (original.property != property or original.folio != reversal.folio
+        or original.reversal_of or original.source_doctype != "Folio Charge"
+        or reversal.source_doctype != "Folio Charge"
+        or original.ledger != "Guest" or reversal.ledger != "Guest"
+        or original.transaction_code != reversal.transaction_code
+        or Decimal(str(original.debit)) <= 0 or original.credit or reversal.debit
+        or Decimal(str(original.debit)) != Decimal(str(reversal.credit))):
+        raise ValueError("Only full guest charge reversals supported")
+    records = posting_status(property, original.name)["records"]
+    if len(records) != 1 or records[0]["status"] != "Posted":
+        raise ValueError("Unique posted original required")
+    journal = journal_get(property, records[0]["journal_entry"])
+    if journal["docstatus"] != 1 or journal["record"]["status"] != "Posted":
+        raise ValueError("Submitted original required")
+    if Decimal(str(journal["total_debit"])) != Decimal(str(original.debit)) or journal["total_debit"] != journal["total_credit"]:
+        raise ValueError("Original amount mismatch")
+    reversals = frappe.get_list("Folio Ledger Entry",
+        filters={"property": property, "reversal_of": original.name},
+        fields=["name", "folio"], limit_page_length=2)
+    if len(reversals) != 1 or reversals[0]["name"] != entry_id or reversals[0]["folio"] != original.folio:
+        raise ValueError("Unique visible reversal required")
+    existing = posting_status(property, entry_id)["records"]
+    return {"entry_id": entry_id, "original_entry": original.name,
+            "original_journal": journal["journal"], "folio": original.folio,
+            "business_date": str(reversal.business_date),
+            "existing_records": existing,
+            "rows": [{**row, "debit": row["credit"], "credit": row["debit"]} for row in journal["rows"]],
+            "status": "Already Recorded" if existing else "Needs Review",
+            "scope": "Read-only proposal; manual duplicate, currency and period review required before saving"}
+
+for fn in (reversal_review, general_ledger, ledger_entries, accounts, mappings, cost_centers, journal_preview, journal_draft, journal_get, posting_status, customers):
     fn._kamra_roles = ("System Manager",)
