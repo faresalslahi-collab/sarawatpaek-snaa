@@ -79,5 +79,30 @@ class ReviewTests(unittest.TestCase):
                 self.bridge.ledger_entries("P", "F1", offset, limit)
         self.frappe.get_doc.assert_not_called()
 
+    def test_general_ledger_disabled(self):
+        self.frappe.PermissionError = PermissionError
+        self.frappe.throw = Mock(side_effect=PermissionError)
+        with self.assertRaises(PermissionError):
+            self.bridge.general_ledger("P", "2026-11-26", "2026-11-26")
+        self.frappe.get_list.assert_not_called()
+
+    def test_general_ledger_scope(self):
+        self.frappe.conf["sarawat_erp_company_ledger_read_enabled"] = 1
+        self.frappe.get_list.return_value = [{"name": "G1"}, {"name": "G2"}]
+        result = self.bridge.general_ledger("P", "2026-11-26", "2026-11-26", limit=1)
+        self.assertEqual(result["next_offset"], 1)
+        self.assertEqual(result["entries"], [{"name": "G1"}])
+        args = self.frappe.get_list.call_args.kwargs
+        self.assertEqual(args["filters"]["company"], "sarawatpark")
+        self.assertEqual(args["filters"]["posting_date"], ["between", ["2026-11-26", "2026-11-26"]])
+        self.assertIn("is_cancelled", args["fields"])
+
+    def test_general_ledger_rejects_invalid_dates(self):
+        self.frappe.conf["sarawat_erp_company_ledger_read_enabled"] = 1
+        for start, end in (("2026-01-01", "2026-03-01"), ("2026-11-27", "2026-11-26"), ("invalid", "2026-11-26")):
+            with self.assertRaises(ValueError):
+                self.bridge.general_ledger("P", start, end)
+        self.frappe.get_list.assert_not_called()
+
 if __name__ == "__main__":
     unittest.main()

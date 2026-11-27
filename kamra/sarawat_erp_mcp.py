@@ -118,5 +118,28 @@ def ledger_entries(property, folio, offset=0, limit=100):
             "next_offset": offset + limit if len(rows) > limit else None,
             "scope": "Folio ledger only; not ERP general ledger"}
 
-for fn in (ledger_entries, accounts, mappings, cost_centers, journal_preview, journal_draft, journal_get, posting_status, customers):
+def general_ledger(property, from_date, to_date, offset=0, limit=100):
+    _gate(property)
+    from datetime import date
+    if frappe.conf.get("sarawat_erp_company_ledger_read_enabled") != 1:
+        frappe.throw("Company-wide ledger access disabled", frappe.PermissionError)
+    if not all(isinstance(v, str) and len(v) == 10 for v in (from_date, to_date)):
+        raise ValueError("ISO dates required")
+    start, end = date.fromisoformat(from_date), date.fromisoformat(to_date)
+    if start > end or (end - start).days > 31:
+        raise ValueError("Date range must not exceed 32 days")
+    if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 200:
+        raise ValueError("Invalid pagination")
+    rows = frappe.get_list("GL Entry", filters={"company": "sarawatpark",
+        "posting_date": ["between", [from_date, to_date]]},
+        fields=["name", "posting_date", "account", "debit", "credit",
+                "voucher_type", "voucher_no", "party_type", "party",
+                "cost_center", "is_cancelled"],
+        order_by="posting_date asc, name asc", limit_start=offset,
+        limit_page_length=limit + 1)
+    return {"company": "sarawatpark", "entries": rows[:limit],
+            "next_offset": offset + limit if len(rows) > limit else None,
+            "scope": "Permission-filtered company GL, including cancellation rows; not proof of source identity"}
+
+for fn in (general_ledger, ledger_entries, accounts, mappings, cost_centers, journal_preview, journal_draft, journal_get, posting_status, customers):
     fn._kamra_roles = ("System Manager",)
