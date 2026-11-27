@@ -71,9 +71,12 @@ def posting_status(property, entry_id):
         raise ValueError("Unsupported source")
     def key(*parts):
         return hashlib.sha256(json.dumps(["sarawatpark", property, *parts]).encode()).hexdigest()
+    siblings = frappe.get_list("Folio Ledger Entry", filters={"property": property, "source_doctype": ledger.source_doctype, "source_name": ledger.source_name}, fields=["name", "folio"], limit_page_length=5)
+    if not siblings or len(siblings) > 3 or any(row.folio != ledger.folio for row in siblings) or entry_id not in [row.name for row in siblings]:
+        raise ValueError("Ambiguous source scope")
     keys = [key(ledger.source_doctype, ledger.source_name),
             key(ledger.source_doctype, ledger.source_name, "advance_applied"),
-            key("folio_ledger", entry_id)]
+            * [key("folio_ledger", row.name) for row in siblings]]
     return {"entry_id": entry_id, "records": frappe.get_list("Kamra Posting Record",
         filters={"company": "sarawatpark", "source_property": property, "source_key": ["in", keys]},
         fields=["name", "source_key", "status", "journal_entry"], limit_page_length=10),
@@ -83,7 +86,13 @@ def customers(property, search):
     _gate(property)
     if not isinstance(search, str) or not 2 <= len(search.strip()) <= 100 or any(c in search for c in "%_"):
         raise ValueError("Specific customer search required")
-    return frappe.get_list("Customer", filters={"disabled": 0},
+    bindings = frappe.conf.get("kamra_finance_approved_folios") or {}
+    if not isinstance(bindings, dict):
+        raise ValueError("Invalid approved folio bindings")
+    allowed = sorted({b["customer"] for b in bindings.values() if isinstance(b, dict) and b.get("company") == "sarawatpark" and b.get("property") == property and isinstance(b.get("customer"), str) and b["customer"]})
+    if not allowed:
+        return []
+    return frappe.get_list("Customer", filters={"disabled": 0, "name": ["in", allowed]},
         or_filters={"name": ["like", "%" + search.strip() + "%"],
                     "customer_name": ["like", "%" + search.strip() + "%"]},
         fields=["name", "customer_name"], order_by="name asc", limit_page_length=30)
