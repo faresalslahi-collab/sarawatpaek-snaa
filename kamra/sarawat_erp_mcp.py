@@ -236,5 +236,71 @@ def folio_reconciliation(property, folio):
     return {"folio": folio, "entries": results,
             "scope": "Integration record review only; shared payment records do not establish operation-level posting or absence of manual GL entries"}
 
-for fn in (folio_reconciliation, period_movements, reversal_review, general_ledger, ledger_entries, accounts, mappings, cost_centers, journal_preview, journal_draft, journal_get, posting_status, customers):
+def balance_review(property, from_date, to_date, opening_from):
+    """Bounded visible-ledger balance review, including prior movements."""
+    from datetime import date, timedelta
+    from decimal import Decimal
+    _gate(property)
+    start, end, opening = map(date.fromisoformat, (from_date, to_date, opening_from))
+    if opening > start or start > end or (end-opening).days > 366:
+        raise ValueError("Invalid review interval; maximum 367 days")
+    totals = {}
+    cursor = opening
+    while cursor <= end:
+        boundary = min(end, cursor + timedelta(days=31))
+        if cursor < start:
+            boundary = min(boundary, start-timedelta(days=1))
+        report = period_movements(property, cursor.isoformat(), boundary.isoformat())
+        for row in report["accounts"]:
+            values = totals.setdefault(row["account"], [Decimal(0), Decimal(0), Decimal(0)])
+            if cursor < start:
+                values[0] += Decimal(row["net_debit"])
+            else:
+                values[1] += Decimal(row["debit"])
+                values[2] += Decimal(row["credit"])
+        cursor = boundary + timedelta(days=1)
+    return {"opening_from": opening_from, "from_date": from_date, "to_date": to_date,
+            "accounts": [{"account": account, "opening_net_debit": str(v[0]),
+                          "debit": str(v[1]), "credit": str(v[2]),
+                          "closing_net_debit": str(v[0]+v[1]-v[2])}
+                         for account, v in sorted(totals.items())],
+            "scope": "Permission-filtered movements since supplied opening date; excludes earlier balances and is not a certified trial balance"}
+
+def journal_control_review(property, journal):
+    _gate(property)
+    from decimal import Decimal
+    doc = journal_get(property, journal)
+    blockers = []
+    if doc["docstatus"] != 0 or doc["record"]["status"] != "Draft Created":
+        blockers.append("Journal is not a linked draft")
+    company = frappe.get_doc("Company", "sarawatpark")
+    company.check_permission("read")
+    debit = credit = Decimal(0)
+    for row in doc["rows"]:
+        account = frappe.get_doc("Account", row["account"])
+        account.check_permission("read")
+        if (account.company != company.name or account.is_group or account.disabled
+            or account.account_currency != company.default_currency):
+            blockers.append("Invalid or non-company-currency account: " + account.name)
+        d, c = Decimal(str(row["debit"])), Decimal(str(row["credit"]))
+        if not d.is_finite() or not c.is_finite() or min(d,c) < 0 or (d > 0) == (c > 0):
+            raise ValueError("Invalid journal row amounts")
+        debit += d
+        credit += c
+        if account.account_type in ("Receivable", "Payable") and not (row["party_type"] and row["party"]):
+            blockers.append("Missing party: " + account.name)
+        if not row["cost_center"]:
+            blockers.append("Missing cost center: " + account.name)
+        else:
+            center = frappe.get_doc("Cost Center", row["cost_center"])
+            center.check_permission("read")
+            if center.company != company.name or center.is_group or center.disabled:
+                blockers.append("Invalid cost center: " + center.name)
+    if debit <= 0 or debit != credit or debit != Decimal(str(doc["total_debit"])) or credit != Decimal(str(doc["total_credit"])):
+        blockers.append("Journal totals mismatch")
+    return {"journal": journal, "blockers": blockers,
+            "status": "Blocked" if blockers else "Preliminary checks passed",
+            "scope": "Read-only checks; source identity, duplicate audit, accounting period and explicit approval remain required. Not authorization to submit."}
+
+for fn in (journal_control_review, balance_review, folio_reconciliation, period_movements, reversal_review, general_ledger, ledger_entries, accounts, mappings, cost_centers, journal_preview, journal_draft, journal_get, posting_status, customers):
     fn._kamra_roles = ("System Manager",)
