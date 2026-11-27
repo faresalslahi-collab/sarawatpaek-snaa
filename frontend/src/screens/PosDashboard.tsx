@@ -8,7 +8,7 @@ import {
   Wallet, TrendingUp,
 } from "lucide-react"
 import { Link } from "react-router-dom"
-import { call, getCurrentProperty } from "../lib/api"
+import { call, getCurrentProperty, whoami } from "../lib/api"
 import { subscribeRealtime } from "../lib/realtime"
 import { serverError } from "../lib/resource"
 import { cur, moneyLocale } from "../lib/money"
@@ -49,6 +49,71 @@ interface Dash {
   avg_fire_to_ready_mins: number | null
 }
 interface Outlet { name: string; outlet_name: string }
+
+interface PostingPage {
+  rows: { order: string; amount: number; payment_mode: string; status: string;
+    journal: string | null; reason: string | null }[]
+  next_offset: number | null
+}
+
+function PostingReview({ outlet, date }: { outlet: string; date: string }) {
+  const [page, setPage] = useState<PostingPage | null>(null)
+  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false)
+
+  async function load(offset = 0) {
+    setLoading(true)
+    setError("")
+    try {
+      const result = await call<PostingPage>(
+        "kamra_erpnext_integration.pos_reconciliation.paid_orders",
+        { outlet, business_date: date, offset },
+      )
+      setPage((previous) => ({
+        rows: offset && previous ? [...previous.rows, ...result.rows] : result.rows,
+        next_offset: result.next_offset,
+      }))
+    } catch (e) {
+      setError(serverError(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <section className="rounded-xl border border-zinc-200 bg-white p-3">
+      <button className="rounded-lg border px-3 py-1.5 text-sm" disabled={loading}
+        onClick={() => void load()}>{translate("Review POS posting records")}</button>
+      {loading && <p role="status" className="mt-2 text-sm">{translate("Loading…")}</p>}
+      {error && <p role="alert" className="mt-2 text-sm text-rose-700">{error}</p>}
+      {page && <>
+        <p className="mt-2 text-xs text-zinc-500">
+          {date} · {translate("Integration records for paid orders. Cross-check the ERPNext ledger separately.")}
+        </p>
+        {page.rows.length ? <div className="overflow-x-auto"><table className="mt-2 w-full text-start text-sm">
+          <thead><tr>
+            <th scope="col" className="p-2 text-start">{translate("Order")}</th>
+            <th scope="col" className="p-2 text-start">{translate("Amount")}</th>
+            <th scope="col" className="p-2 text-start">{translate("Payment mode")}</th>
+            <th scope="col" className="p-2 text-start">{translate("Status")}</th>
+            <th scope="col" className="p-2 text-start">{translate("Journal Entry")}</th>
+            <th scope="col" className="p-2 text-start">{translate("Reason")}</th>
+          </tr></thead>
+          <tbody>{page.rows.map((row) => <tr key={row.order} className="border-t">
+            <td className="p-2">{row.order}</td>
+            <td className="p-2">{cur()}{inr(row.amount)}</td>
+            <td className="p-2">{translate(row.payment_mode || "—")}</td>
+            <td className="p-2">{translate(row.status)}</td>
+            <td className="p-2">{row.journal || "—"}</td>
+            <td className="p-2">{row.reason || "—"}</td>
+          </tr>)}</tbody>
+        </table></div> : <p className="mt-2 text-sm">{translate("No paid orders for this date.")}</p>}
+        {page.next_offset !== null && <button className="mt-2 rounded-lg border px-3 py-1.5 text-sm"
+          disabled={loading} onClick={() => void load(page.next_offset ?? 0)}>{translate("Load more")}</button>}
+      </>}
+    </section>
+  )
+}
 
 function today() {
   const d = new Date()
@@ -116,7 +181,13 @@ export default function PosDashboard() {
   const [date, setDate] = useState(today())
   const [toDate, setToDate] = useState("") // "" = the one day
   const [data, setData] = useState<Dash | null>(null)
+  const [canReviewPosting, setCanReviewPosting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    whoami().then(({ roles }) => setCanReviewPosting(roles.includes("System Manager")))
+      .catch(() => setCanReviewPosting(false))
+  }, [])
 
   useEffect(() => {
     call<Outlet[]>("kamra.pos.outlets", { property: getCurrentProperty() })
@@ -165,6 +236,8 @@ export default function PosDashboard() {
       </div>
 
       {error && <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{translate(error)}</div>}
+
+      {canReviewPosting && outlet && !toDate && <PostingReview key={JSON.stringify([outlet, date])} outlet={outlet} date={date} />}
 
       {data && (
         <>
