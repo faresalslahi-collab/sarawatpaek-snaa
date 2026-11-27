@@ -214,5 +214,27 @@ def period_movements(property, from_date, to_date):
             "difference": str(debit-credit),
             "scope": "Visible non-cancelled period movements only; not a trial balance or consistent database snapshot"}
 
-for fn in (period_movements, reversal_review, general_ledger, ledger_entries, accounts, mappings, cost_centers, journal_preview, journal_draft, journal_get, posting_status, customers):
+def folio_reconciliation(property, folio):
+    _gate(property)
+    page = ledger_entries(property, folio, limit=200)
+    if page["next_offset"] is not None:
+        raise ValueError("Folio exceeds review limit")
+    results = []
+    for row in page["entries"]:
+        item = {"entry_id": row["name"], "source_name": row["source_name"],
+                "description": row["description"], "debit": row["debit"],
+                "credit": row["credit"], "reversal_of": row["reversal_of"]}
+        if row["source_doctype"] not in ("Folio Charge", "Folio Payment"):
+            item["status"] = "Unsupported source"
+        else:
+            records = posting_status(property, row["name"])["records"]
+            item["records"] = records
+            item["status"] = "Review linked records" if records else "No visible integration record"
+            if row["reversal_of"]:
+                item["status"] = "Review reversal"
+        results.append(item)
+    return {"folio": folio, "entries": results,
+            "scope": "Integration record review only; shared payment records do not establish operation-level posting or absence of manual GL entries"}
+
+for fn in (folio_reconciliation, period_movements, reversal_review, general_ledger, ledger_entries, accounts, mappings, cost_centers, journal_preview, journal_draft, journal_get, posting_status, customers):
     fn._kamra_roles = ("System Manager",)
