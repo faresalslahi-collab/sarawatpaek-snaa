@@ -940,6 +940,10 @@ def send_order(outlet: str, items, property: str | None = None,
 		doc.discount_amount = float(discount)
 		doc.discount_reason = discount_reason or None
 	doc.insert(ignore_permissions=True)
+	# Reload the just-inserted order in this transaction before the second
+	# save: insert hooks and database timestamp precision can differ from
+	# the in-memory document. Keep Frappe's normal stale-write check intact.
+	doc.reload()
 	out = _fire(doc)
 	out.update(order=doc.name, order_total=doc.order_total)
 	return out
