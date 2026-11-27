@@ -266,5 +266,41 @@ def balance_review(property, from_date, to_date, opening_from):
                          for account, v in sorted(totals.items())],
             "scope": "Permission-filtered movements since supplied opening date; excludes earlier balances and is not a certified trial balance"}
 
-for fn in (balance_review, folio_reconciliation, period_movements, reversal_review, general_ledger, ledger_entries, accounts, mappings, cost_centers, journal_preview, journal_draft, journal_get, posting_status, customers):
+def journal_control_review(property, journal):
+    _gate(property)
+    from decimal import Decimal
+    doc = journal_get(property, journal)
+    blockers = []
+    if doc["docstatus"] != 0 or doc["record"]["status"] != "Draft Created":
+        blockers.append("Journal is not a linked draft")
+    company = frappe.get_doc("Company", "sarawatpark")
+    company.check_permission("read")
+    debit = credit = Decimal(0)
+    for row in doc["rows"]:
+        account = frappe.get_doc("Account", row["account"])
+        account.check_permission("read")
+        if (account.company != company.name or account.is_group or account.disabled
+            or account.account_currency != company.default_currency):
+            blockers.append("Invalid or non-company-currency account: " + account.name)
+        d, c = Decimal(str(row["debit"])), Decimal(str(row["credit"]))
+        if not d.is_finite() or not c.is_finite() or min(d,c) < 0 or (d > 0) == (c > 0):
+            raise ValueError("Invalid journal row amounts")
+        debit += d
+        credit += c
+        if account.account_type in ("Receivable", "Payable") and not (row["party_type"] and row["party"]):
+            blockers.append("Missing party: " + account.name)
+        if not row["cost_center"]:
+            blockers.append("Missing cost center: " + account.name)
+        else:
+            center = frappe.get_doc("Cost Center", row["cost_center"])
+            center.check_permission("read")
+            if center.company != company.name or center.is_group or center.disabled:
+                blockers.append("Invalid cost center: " + center.name)
+    if debit <= 0 or debit != credit or debit != Decimal(str(doc["total_debit"])) or credit != Decimal(str(doc["total_credit"])):
+        blockers.append("Journal totals mismatch")
+    return {"journal": journal, "blockers": blockers,
+            "status": "Blocked" if blockers else "Preliminary checks passed",
+            "scope": "Read-only checks; source identity, duplicate audit, accounting period and explicit approval remain required. Not authorization to submit."}
+
+for fn in (journal_control_review, balance_review, folio_reconciliation, period_movements, reversal_review, general_ledger, ledger_entries, accounts, mappings, cost_centers, journal_preview, journal_draft, journal_get, posting_status, customers):
     fn._kamra_roles = ("System Manager",)
