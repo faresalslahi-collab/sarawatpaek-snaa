@@ -19,6 +19,35 @@ class ReviewTests(unittest.TestCase):
             spec.loader.exec_module(self.bridge)
         self.bridge._gate = Mock()
 
+    def test_period_movements_excludes_cancelled(self):
+        self.bridge.general_ledger = Mock(return_value={"entries": [
+            {"name":"G1","account":"A","debit":10,"credit":0,"is_cancelled":0},
+            {"name":"G2","account":"B","debit":0,"credit":10,"is_cancelled":0},
+            {"name":"G3","account":"A","debit":99,"credit":0,"is_cancelled":1}],
+            "next_offset":None})
+        result = self.bridge.period_movements("P", "2026-11-26", "2026-11-26")
+        self.assertEqual(result["total_debit"], "10")
+        self.assertEqual(result["difference"], "0")
+
+    def test_balance_review_separates_opening(self):
+        self.bridge.period_movements = Mock(side_effect=[
+            {"accounts":[{"account":"A","net_debit":"20"}]},
+            {"accounts":[{"account":"A","debit":"10","credit":"5"}]}])
+        result = self.bridge.balance_review("P", "2026-11-26", "2026-11-27", "2026-11-25")
+        self.assertEqual(result["accounts"][0]["closing_net_debit"], "25")
+        self.assertEqual(result["accounts"][0]["opening_net_debit"], "20")
+
+    def test_balance_review_rejects_invalid_interval(self):
+        with self.assertRaises(ValueError):
+            self.bridge.balance_review("P", "2026-11-26", "2026-11-25", "2026-11-24")
+
+    def test_control_review_blocks_submitted_journal(self):
+        self.bridge.journal_get = Mock(return_value={"docstatus":1,
+            "record":{"status":"Posted"}, "rows":[], "total_debit":0, "total_credit":0})
+        self.frappe.get_doc.return_value = types.SimpleNamespace(name="sarawatpark", check_permission=Mock())
+        result = self.bridge.journal_control_review("P", "JV")
+        self.assertEqual(result["status"], "Blocked")
+
     def test_gate_failure_prevents_reads(self):
         self.bridge._gate.side_effect = PermissionError
         for fn in (self.bridge.journal_get, self.bridge.posting_status, self.bridge.customers, self.bridge.ledger_entries):
