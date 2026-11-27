@@ -185,6 +185,17 @@ class BillSettlementTestCase(AuditTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "not settled"):
 			pos.deliver_order(o)
 
+	def test_outlet_never_picks_another_outlets_till(self):
+		from unittest.mock import patch
+
+		from kamra.cashier import _pick_session
+
+		assigned = {"other": "Shop", "shared": None, "correct": "Cafe"}
+		with patch.object(frappe.db, "get_value", side_effect=lambda dt, name, field: assigned[name]):
+			self.assertIsNone(_pick_session(["other"], "Cafe"))
+			self.assertEqual(_pick_session(["other", "shared"], "Cafe"), "shared")
+			self.assertEqual(_pick_session(["shared", "correct"], "Cafe"), "correct")
+
 	def test_paid_bill_closes(self):
 		o = self.order(table_no="T3")
 		self.assertTrue(pos.pay_order(o, "Cash")["paid"])
@@ -295,6 +306,29 @@ class BillSettlementTestCase(AuditTestCase):
 		self.assertTrue(pos.deliver_order(o)["posted_to_folio"])
 		self.assertTrue(frappe.get_all("Folio Charge", filters={
 			"parent": guest_folio(res.name), "description": ["like", f"%{o}%"]}))
+
+	def test_retry_room_delivery_posts_only_once(self):
+		res = make_reservation(PROP_A, self.rt, d(-1), TODAY,
+		                       status="Checked In", room=self.room)
+		order = self.order(table_no="retry")
+		pos.charge_to_room(order, self.room)
+		for _ in range(2):
+			self.assertTrue(pos.deliver_order(order)["posted_to_folio"])
+		self.assertEqual(frappe.db.count("Folio Charge", {
+			"parent": guest_folio(res.name), "source_pos_order": order
+		}), 1)
+		self.assertFalse(frappe.db.exists(
+			"Cashier Transaction", {"pos_order": order, "kind": "Payment"}))
+
+	def test_room_policy_is_checked_again_at_delivery(self):
+		res = make_reservation(PROP_A, self.rt, d(-1), TODAY,
+		                       status="Checked In", room=self.room)
+		order = self.order(table_no="room policy")
+		pos.charge_to_room(order, self.room)
+		frappe.db.set_value("Reservation", res.name, "room_charges_allowed", 0)
+		with self.assertRaises(pos.RoomChargesBlocked):
+			pos.deliver_order(order)
+		self.assertFalse(frappe.db.get_value("POS Order", order, "posted_to_folio"))
 
 	def test_fully_voided_bill_closes(self):
 		o = self.order(table_no="T6")

@@ -37,6 +37,12 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual(result["accounts"][0]["closing_net_debit"], "25")
         self.assertEqual(result["accounts"][0]["opening_net_debit"], "20")
 
+    def test_balance_review_handles_last_supported_date(self):
+        self.bridge.period_movements = Mock(return_value={"accounts": []})
+        result = self.bridge.balance_review("P", "9999-12-31", "9999-12-31", "9999-12-31")
+        self.assertEqual(result["accounts"], [])
+        self.bridge.period_movements.assert_called_once_with("P", "9999-12-31", "9999-12-31")
+
     def test_balance_review_rejects_invalid_interval(self):
         with self.assertRaises(ValueError):
             self.bridge.balance_review("P", "2026-11-26", "2026-11-25", "2026-11-24")

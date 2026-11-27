@@ -76,13 +76,17 @@ def _open_session_names(property: str, user: str) -> list[str]:
 
 
 def _pick_session(names: list[str], outlet: str | None = None) -> str | None:
-	"""Of several open tills, the one serving `outlet` (a POS bill goes to the
-	till of its outlet), else the one opened last."""
-	if outlet and len(names) > 1:
-		for n in names:
-			if frappe.db.get_value("Cashier Session", n, "outlet") == outlet:
-				return n
-	return names[0] if names else None
+	"""Prefer an outlet's own till, then a shared till without an outlet."""
+	if not outlet:
+		return names[0] if names else None
+	shared = None
+	for name in names:
+		assigned = frappe.db.get_value("Cashier Session", name, "outlet")
+		if assigned == outlet:
+			return name
+		if not assigned and shared is None:
+			shared = name
+	return shared
 
 
 # who may open their own till (open_session); admins always may
@@ -129,15 +133,11 @@ def require_open_session(property: str, outlet: str | None = None,
 	`till_only` (a paid-out, drop, petty cash or exchange, which only make
 	sense against a till)."""
 	if _agent_bypass():
-		# Prefer an open session if one exists; else None (txn still recorded
-		# without session when agents act).
-		sess = frappe.db.get_value(
-			"Cashier Session",
-			{"property": property, "status": "Open"},
-			"name",
-			order_by="opened_at desc",
+		names = frappe.get_all(
+			"Cashier Session", filters={"property": property, "status": "Open"},
+			pluck="name", order_by="opened_at desc, creation desc",
 		)
-		return sess
+		return _pick_session(names, outlet)
 	sess = _pick_session(_open_session_names(property, frappe.session.user), outlet)
 	if not sess:
 		if not till_only and not tills_required(property):

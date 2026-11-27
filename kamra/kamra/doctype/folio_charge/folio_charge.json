@@ -25,6 +25,7 @@
   "auto_posted",
   "is_alcohol",
   "reservation",
+  "source_pos_order",
   "reversal_of",
   "void_reason",
   "voided_by"
@@ -177,6 +178,14 @@
    "no_copy": 1,
    "options": "User",
    "read_only": 1
+  },
+  {
+   "fieldname": "source_pos_order",
+   "fieldtype": "Link",
+   "label": "Source POS Order",
+   "options": "POS Order",
+   "read_only": 1,
+   "no_copy": 1
   }
  ],
  "grid_page_length": 50,

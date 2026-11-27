@@ -83,15 +83,20 @@ class POSOrder(Document):
 			self.reservation = frappe.db.get_value(
 				"Reservation", {"room": self.room, "status": "Checked In",
 				                "property": self.property}, "name")
-		status = self.reservation and frappe.db.get_value(
-			"Reservation", self.reservation, "status")
-		if status != "Checked In":
+		stay = self.reservation and frappe.db.get_value(
+			"Reservation", self.reservation, ["status", "property", "room"],
+			as_dict=True, for_update=True)
+		if (not stay or stay.status != "Checked In" or stay.property != self.property
+		        or not stay.room or (self.room and self.room != stay.room)):
 			where = (_("Room {0}").format(frappe.db.get_value(
 				"Room", self.room, "room_number") or self.room)
 				if self.room else _("this bill"))
 			frappe.throw(_(
 				"{0} has no checked-in guest to post to. Take payment at the "
 				"outlet to close it.").format(where))
+
+		from kamra.pos import assert_room_charges_allowed
+		assert_room_charges_allowed(self.reservation, for_update=True)
 
 	def guard_bill_close(self):
 		"""Delivered means the BILL is closed, not that the food left the
@@ -176,6 +181,7 @@ class POSOrder(Document):
 			"posting_date": posting_date,
 			"charge_type": "Food & Beverage",
 			"reservation": self.reservation,
+			"source_pos_order": self.name,
 			"description": f"{where}: {detail} ({self.name})",
 			"qty": 1,
 			"rate": items_total,
@@ -190,6 +196,7 @@ class POSOrder(Document):
 				"posting_date": posting_date,
 				"charge_type": "Food & Beverage",
 				"reservation": self.reservation,
+				"source_pos_order": self.name,
 				# the bill's name stays in the text: move_room_bill finds its lines by it
 				"description": f"{where}: {label} {float(self.levy_percent or 0):g}% ({self.name})",
 				"qty": 1,
