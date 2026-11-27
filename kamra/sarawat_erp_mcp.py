@@ -168,13 +168,18 @@ def reversal_review(property, entry_id):
         raise ValueError("Submitted original required")
     if Decimal(str(journal["total_debit"])) != Decimal(str(original.debit)) or journal["total_debit"] != journal["total_credit"]:
         raise ValueError("Original amount mismatch")
+    reversals = frappe.get_list("Folio Ledger Entry",
+        filters={"property": property, "reversal_of": original.name},
+        fields=["name", "folio"], limit_page_length=2)
+    if len(reversals) != 1 or reversals[0]["name"] != entry_id or reversals[0]["folio"] != original.folio:
+        raise ValueError("Unique visible reversal required")
     existing = posting_status(property, entry_id)["records"]
     return {"entry_id": entry_id, "original_entry": original.name,
             "original_journal": journal["journal"], "folio": original.folio,
             "business_date": str(reversal.business_date),
             "existing_records": existing,
             "rows": [{**row, "debit": row["credit"], "credit": row["debit"]} for row in journal["rows"]],
-            "status": "Needs Review",
+            "status": "Already Recorded" if existing else "Needs Review",
             "scope": "Read-only proposal; manual duplicate, currency and period review required before saving"}
 
 for fn in (reversal_review, general_ledger, ledger_entries, accounts, mappings, cost_centers, journal_preview, journal_draft, journal_get, posting_status, customers):
