@@ -109,10 +109,10 @@ def ledger_entries(property, folio, offset=0, limit=100):
         raise ValueError("Property mismatch")
     rows = frappe.get_list("Folio Ledger Entry",
         filters={"property": property, "folio": folio},
-        fields=["name", "folio", "posting_date", "ledger", "source_doctype",
+        fields=["name", "folio", "business_date", "ledger", "source_doctype",
                 "source_name", "description", "debit", "credit", "transaction_code",
                 "reversal_of"],
-        order_by="posting_date asc, name asc", limit_start=offset,
+        order_by="business_date asc, name asc", limit_start=offset,
         limit_page_length=limit + 1)
     return {"folio": folio, "entries": rows[:limit],
             "next_offset": offset + limit if len(rows) > limit else None,
