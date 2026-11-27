@@ -181,6 +181,7 @@ class POSOrder(Document):
 			"posting_date": posting_date,
 			"charge_type": "Food & Beverage",
 			"reservation": self.reservation,
+			"source_pos_order": self.name,
 			"description": f"{where}: {detail} ({self.name})",
 			"qty": 1,
 			"rate": items_total,
@@ -195,6 +196,7 @@ class POSOrder(Document):
 				"posting_date": posting_date,
 				"charge_type": "Food & Beverage",
 				"reservation": self.reservation,
+				"source_pos_order": self.name,
 				# the bill's name stays in the text: move_room_bill finds its lines by it
 				"description": f"{where}: {label} {float(self.levy_percent or 0):g}% ({self.name})",
 				"qty": 1,
