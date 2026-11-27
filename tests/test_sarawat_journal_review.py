@@ -21,7 +21,7 @@ class ReviewTests(unittest.TestCase):
 
     def test_gate_failure_prevents_reads(self):
         self.bridge._gate.side_effect = PermissionError
-        for fn in (self.bridge.journal_get, self.bridge.posting_status, self.bridge.customers):
+        for fn in (self.bridge.journal_get, self.bridge.posting_status, self.bridge.customers, self.bridge.ledger_entries):
             with self.assertRaises(PermissionError):
                 fn("P", "test")
         self.frappe.get_list.assert_not_called()
@@ -53,6 +53,31 @@ class ReviewTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.bridge.posting_status("P", "entry")
         self.frappe.get_list.assert_not_called()
+
+    def test_ledger_cross_property(self):
+        self.frappe.get_doc.return_value = types.SimpleNamespace(property="Other", check_permission=Mock())
+        with self.assertRaises(ValueError):
+            self.bridge.ledger_entries("P", "F1")
+        self.frappe.get_list.assert_not_called()
+
+    def test_ledger_pagination_and_scope(self):
+        doc = types.SimpleNamespace(property="P", check_permission=Mock())
+        self.frappe.get_doc.return_value = doc
+        self.frappe.get_list.return_value = [{"name": "L1"}, {"name": "L2"}]
+        result = self.bridge.ledger_entries("P", "F1", offset=2, limit=1)
+        self.assertEqual(result["entries"], [{"name": "L1"}])
+        self.assertEqual(result["next_offset"], 3)
+        doc.check_permission.assert_called_once_with("read")
+        args = self.frappe.get_list.call_args.kwargs
+        self.assertEqual(args["filters"], {"property": "P", "folio": "F1"})
+        self.assertEqual(args["limit_start"], 2)
+        self.assertEqual(args["limit_page_length"], 2)
+
+    def test_ledger_invalid_pagination(self):
+        for offset, limit in ((-1, 1), (0, 201), (0, True)):
+            with self.assertRaises(ValueError):
+                self.bridge.ledger_entries("P", "F1", offset, limit)
+        self.frappe.get_doc.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()
