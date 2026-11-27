@@ -97,5 +97,26 @@ def customers(property, search):
                     "customer_name": ["like", "%" + search.strip() + "%"]},
         fields=["name", "customer_name"], order_by="name asc", limit_page_length=30)
 
-for fn in (accounts, mappings, cost_centers, journal_preview, journal_draft, journal_get, posting_status, customers):
+def ledger_entries(property, folio, offset=0, limit=100):
+    _gate(property)
+    if not isinstance(folio, str) or not folio.strip() or len(folio) > 140:
+        raise ValueError("Invalid folio identity")
+    if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 200:
+        raise ValueError("Invalid pagination")
+    doc = frappe.get_doc("Folio", folio)
+    doc.check_permission("read")
+    if doc.property != property:
+        raise ValueError("Property mismatch")
+    rows = frappe.get_list("Folio Ledger Entry",
+        filters={"property": property, "folio": folio},
+        fields=["name", "folio", "posting_date", "ledger", "source_doctype",
+                "source_name", "description", "debit", "credit", "transaction_code",
+                "reversal_of"],
+        order_by="posting_date asc, name asc", limit_start=offset,
+        limit_page_length=limit + 1)
+    return {"folio": folio, "entries": rows[:limit],
+            "next_offset": offset + limit if len(rows) > limit else None,
+            "scope": "Folio ledger only; not ERP general ledger"}
+
+for fn in (ledger_entries, accounts, mappings, cost_centers, journal_preview, journal_draft, journal_get, posting_status, customers):
     fn._kamra_roles = ("System Manager",)
