@@ -2652,6 +2652,7 @@ TOOLS += (
     _t("erp_account_mappings", "sarawat_erp_mcp.mappings", "Read-only approved and proposed account mappings.", {"offset": _p("integer"), "limit": _p("integer")}, property=True, group="Billing"),
     _t("erp_cost_centers", "sarawat_erp_mcp.cost_centers", "Read-only company cost centers.", {}, property=True, group="Billing"),
     _t("erp_journal_draft", "sarawat_erp_mcp.journal_draft", "Save an approved folio journal as a draft only. Obtain explicit user approval before each save.", {"entry_id": _p("string")}, required=("entry_id",), property=True, mutating=True, group="Billing"),
+    _t("erp_customers", "sarawat_erp_mcp.customers", "Search active ERP customer identities; results are not proof of folio ownership.", {"search": _p("string")}, required=("search",), property=True, group="Billing"),
     _t("erp_journal_get", "sarawat_erp_mcp.journal_get", "Read a journal linked to a scoped integration posting record.", {"journal": _p("string")}, required=("journal",), property=True, group="Billing"),
     _t("erp_posting_status", "sarawat_erp_mcp.posting_status", "Read integration posting records for a source entry; not a full duplicate audit.", {"entry_id": _p("string")}, required=("entry_id",), property=True, group="Billing"),
     _t("erp_journal_preview", "sarawat_erp_mcp.journal_preview", "Preview a ledger entry without saving a journal.", {"entry_id": _p("string")}, required=("entry_id",), property=True, group="Billing"),
