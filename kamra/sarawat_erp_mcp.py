@@ -236,5 +236,35 @@ def folio_reconciliation(property, folio):
     return {"folio": folio, "entries": results,
             "scope": "Integration record review only; shared payment records do not establish operation-level posting or absence of manual GL entries"}
 
-for fn in (folio_reconciliation, period_movements, reversal_review, general_ledger, ledger_entries, accounts, mappings, cost_centers, journal_preview, journal_draft, journal_get, posting_status, customers):
+def balance_review(property, from_date, to_date, opening_from):
+    """Bounded visible-ledger balance review, including prior movements."""
+    from datetime import date, timedelta
+    from decimal import Decimal
+    _gate(property)
+    start, end, opening = map(date.fromisoformat, (from_date, to_date, opening_from))
+    if opening > start or start > end or (end-opening).days > 366:
+        raise ValueError("Invalid review interval; maximum 367 days")
+    totals = {}
+    cursor = opening
+    while cursor <= end:
+        boundary = min(end, cursor + timedelta(days=31))
+        if cursor < start:
+            boundary = min(boundary, start-timedelta(days=1))
+        report = period_movements(property, cursor.isoformat(), boundary.isoformat())
+        for row in report["accounts"]:
+            values = totals.setdefault(row["account"], [Decimal(0), Decimal(0), Decimal(0)])
+            if cursor < start:
+                values[0] += Decimal(row["net_debit"])
+            else:
+                values[1] += Decimal(row["debit"])
+                values[2] += Decimal(row["credit"])
+        cursor = boundary + timedelta(days=1)
+    return {"opening_from": opening_from, "from_date": from_date, "to_date": to_date,
+            "accounts": [{"account": account, "opening_net_debit": str(v[0]),
+                          "debit": str(v[1]), "credit": str(v[2]),
+                          "closing_net_debit": str(v[0]+v[1]-v[2])}
+                         for account, v in sorted(totals.items())],
+            "scope": "Permission-filtered movements since supplied opening date; excludes earlier balances and is not a certified trial balance"}
+
+for fn in (balance_review, folio_reconciliation, period_movements, reversal_review, general_ledger, ledger_entries, accounts, mappings, cost_centers, journal_preview, journal_draft, journal_get, posting_status, customers):
     fn._kamra_roles = ("System Manager",)
