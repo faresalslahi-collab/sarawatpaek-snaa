@@ -185,6 +185,17 @@ class BillSettlementTestCase(AuditTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "not settled"):
 			pos.deliver_order(o)
 
+	def test_outlet_never_picks_another_outlets_till(self):
+		from unittest.mock import patch
+
+		from kamra.cashier import _pick_session
+
+		assigned = {"other": "Shop", "shared": None, "correct": "Cafe"}
+		with patch.object(frappe.db, "get_value", side_effect=lambda dt, name, field: assigned[name]):
+			self.assertIsNone(_pick_session(["other"], "Cafe"))
+			self.assertEqual(_pick_session(["other", "shared"], "Cafe"), "shared")
+			self.assertEqual(_pick_session(["shared", "correct"], "Cafe"), "correct")
+
 	def test_paid_bill_closes(self):
 		o = self.order(table_no="T3")
 		self.assertTrue(pos.pay_order(o, "Cash")["paid"])
