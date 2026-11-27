@@ -79,5 +79,14 @@ def posting_status(property, entry_id):
         fields=["name", "source_key", "status", "journal_entry"], limit_page_length=10),
         "scope": "integration records only; not proof of absence of other postings"}
 
-for fn in (accounts, mappings, cost_centers, journal_preview, journal_draft, journal_get, posting_status):
+def customers(property, search):
+    _gate(property)
+    if not isinstance(search, str) or not 2 <= len(search.strip()) <= 100 or any(c in search for c in "%_"):
+        raise ValueError("Specific customer search required")
+    return frappe.get_list("Customer", filters={"disabled": 0},
+        or_filters={"name": ["like", "%" + search.strip() + "%"],
+                    "customer_name": ["like", "%" + search.strip() + "%"]},
+        fields=["name", "customer_name"], order_by="name asc", limit_page_length=30)
+
+for fn in (accounts, mappings, cost_centers, journal_preview, journal_draft, journal_get, posting_status, customers):
     fn._kamra_roles = ("System Manager",)
