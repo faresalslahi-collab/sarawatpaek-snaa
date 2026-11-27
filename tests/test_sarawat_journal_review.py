@@ -113,6 +113,7 @@ class ReviewTests(unittest.TestCase):
         self.bridge.posting_status = Mock(side_effect=[{"records":[{"status":"Posted","journal_entry":"JV1"}]}, {"records":[]}])
         self.bridge.journal_get = Mock(return_value={"docstatus":1,"record":{"status":"Posted"},"journal":"JV1","total_debit":1050,"total_credit":1050,
             "rows":[{"account":"AR","debit":1050,"credit":0,"party":"C1"},{"account":"Revenue","debit":0,"credit":1000},{"account":"VAT","debit":0,"credit":50}]})
+        self.frappe.get_list.return_value = [{"name":"L2","folio":"F1"}]
         return original, reversal
 
     def test_reversal_review_full_charge(self):
@@ -149,6 +150,18 @@ class ReviewTests(unittest.TestCase):
         with self.assertRaises(PermissionError):
             self.bridge.reversal_review("P", "L2")
         self.frappe.get_doc.assert_not_called()
+
+    def test_reversal_review_duplicate_source(self):
+        self.reversal_fixture()
+        self.frappe.get_list.return_value.append({"name":"L3","folio":"F1"})
+        with self.assertRaises(ValueError):
+            self.bridge.reversal_review("P", "L2")
+
+    def test_reversal_review_existing_record(self):
+        self.reversal_fixture()
+        self.bridge.posting_status.side_effect = [{"records":[{"status":"Posted","journal_entry":"JV1"}]}, {"records":[{"status":"Draft Created","journal_entry":"JV2"}]}]
+        result = self.bridge.reversal_review("P", "L2")
+        self.assertEqual(result["status"], "Already Recorded")
 
 if __name__ == "__main__":
     unittest.main()
