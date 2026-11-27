@@ -182,5 +182,37 @@ def reversal_review(property, entry_id):
             "status": "Already Recorded" if existing else "Needs Review",
             "scope": "Read-only proposal; manual duplicate, currency and period review required before saving"}
 
-for fn in (reversal_review, general_ledger, ledger_entries, accounts, mappings, cost_centers, journal_preview, journal_draft, journal_get, posting_status, customers):
+def period_movements(property, from_date, to_date):
+    """Summarize visible GL movements, not opening or closing balances."""
+    from decimal import Decimal
+    totals = {}
+    seen = set()
+    offset = 0
+    while True:
+        page = general_ledger(property, from_date, to_date, offset=offset, limit=200)
+        for row in page["entries"]:
+            if row["name"] in seen:
+                raise ValueError("Ledger changed during pagination")
+            seen.add(row["name"])
+            if row["is_cancelled"]:
+                continue
+            account = row["account"]
+            pair = totals.setdefault(account, [Decimal(0), Decimal(0)])
+            pair[0] += Decimal(str(row["debit"]))
+            pair[1] += Decimal(str(row["credit"]))
+        offset = page["next_offset"]
+        if offset is None:
+            break
+        if offset >= 10000:
+            raise ValueError("Narrow the reporting period")
+    debit = sum((v[0] for v in totals.values()), Decimal(0))
+    credit = sum((v[1] for v in totals.values()), Decimal(0))
+    return {"from_date": from_date, "to_date": to_date,
+            "accounts": [{"account": k, "debit": str(v[0]), "credit": str(v[1]),
+                          "net_debit": str(v[0]-v[1])} for k,v in sorted(totals.items())],
+            "total_debit": str(debit), "total_credit": str(credit),
+            "difference": str(debit-credit),
+            "scope": "Visible non-cancelled period movements only; not a trial balance or consistent database snapshot"}
+
+for fn in (period_movements, reversal_review, general_ledger, ledger_entries, accounts, mappings, cost_centers, journal_preview, journal_draft, journal_get, posting_status, customers):
     fn._kamra_roles = ("System Manager",)
